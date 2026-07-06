@@ -90,6 +90,24 @@
             </a>
         </li>
 
+        @php
+            $pendingDeleteCount = \Illuminate\Support\Facades\DB::table('registers')
+                ->where('delete_setting', 'Pending')
+                ->count();
+        @endphp
+        <li class="{{ Request()->is('deleterecord') ? 'activesidebar' : '' }}">
+            <a href="{{ url('deleterecord') }}">
+                <div class="parent-icon"><i class="bx bx-trash"></i>
+                </div>
+                <div class="menu-title d-flex justify-content-between align-items-center w-100">
+                    Delete Requests
+                    @if($pendingDeleteCount > 0)
+                        <span class="badge bg-danger rounded-pill">{{ $pendingDeleteCount }}</span>
+                    @endif
+                </div>
+            </a>
+        </li>
+
         <!-- <li class="{{ Request()->is('chat*') ? 'activesidebar' : '' }}">
             <a href="{{ url('chat') }}">
                 <div class="parent-icon"><i class="bx bx-message-rounded-dots"></i>

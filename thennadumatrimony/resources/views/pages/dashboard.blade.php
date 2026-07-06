@@ -50,16 +50,10 @@
             <!-- Right Content -->
             <div class="col-lg-9">
                 @if(session('success'))
-                    <div class="alert alert-success alert-dismissible fade show rounded-4 border-0 shadow-sm mb-4" role="alert">
-                        <i class="fas fa-check-circle me-2"></i> {{ session('success') }}
-                        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-                    </div>
+                    <div id="swal-success" data-message="{{ session('success') }}" style="display:none;"></div>
                 @endif
                 @if(session('error'))
-                    <div class="alert alert-danger alert-dismissible fade show rounded-4 border-0 shadow-sm mb-4" role="alert">
-                        <i class="fas fa-exclamation-circle me-2"></i> {{ session('error') }}
-                        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-                    </div>
+                    <div id="swal-error" data-message="{{ session('error') }}" style="display:none;"></div>
                 @endif
                 <!-- 🔷 1. PROFILE HEADER SECTION -->
                 <div class="card border-0 shadow-sm rounded-4 overflow-hidden mb-4 bg-white">
@@ -956,6 +950,65 @@
     </div>
 </div>
 
+<!-- Delete Account Modal -->
+<div class="modal fade" id="deleteAccountModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 rounded-4 shadow overflow-hidden">
+            <div class="modal-header border-0 bg-danger text-white p-4">
+                <h5 class="modal-title serif-font"><i class="fas fa-exclamation-triangle me-2"></i> Delete Account</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body p-4">
+                <div class="alert alert-warning rounded-4 mb-4 border-0 shadow-sm">
+                    <div class="d-flex align-items-start">
+                        <i class="fas fa-exclamation-circle text-warning fa-lg me-3 mt-1"></i>
+                        <div>
+                            <strong class="d-block mb-1">Are you sure you want to delete your account?</strong>
+                            <span class="small text-muted">Your request will be sent to admin for approval. Once approved, your account and all data will be permanently deleted.</span>
+                        </div>
+                    </div>
+                </div>
+
+                <form action="{{ route('dashboard.request.delete') }}" method="POST" id="deleteAccountForm">
+                    @csrf
+                    <div class="mb-3">
+                        <label class="form-label fw-bold text-dark small">Reason for deletion <span class="text-danger">*</span></label>
+                        <select name="delete_reason" class="form-select rounded-pill border-2" id="deleteReasonSelect" required>
+                            <option value="">Select a reason</option>
+                            <option value="Found Partner">Found a partner through this matrimony</option>
+                            <option value="Privacy Concerns">Privacy concerns</option>
+                            <option value="Not Finding Matches">Not finding suitable matches</option>
+                            <option value="Too Many Messages">Too many unwanted messages</option>
+                            <option value="Duplicate Account">I have a duplicate account</option>
+                            <option value="Other">Other</option>
+                        </select>
+                    </div>
+                    <div class="mb-3" id="otherReasonGroup" style="display: none;">
+                        <label class="form-label fw-bold text-dark small">Please tell us more</label>
+                        <textarea name="delete_reason_detail" class="form-control rounded-4 border-2" rows="3" placeholder="Please specify your reason..."></textarea>
+                    </div>
+
+                    <div class="bg-light rounded-4 p-3 mb-0">
+                        <h6 class="small fw-bold text-dark mb-2"><i class="fas fa-info-circle text-maroon me-1"></i> What happens after deletion?</h6>
+                        <ul class="small text-muted mb-0 ps-3" style="list-style-type: disc;">
+                            <li>Your profile will be deactivated immediately</li>
+                            <li>Admin will review your request</li>
+                            <li>Once approved, all your data will be permanently deleted</li>
+                            <li>This action <strong>cannot be undone</strong></li>
+                        </ul>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer border-0 p-4 pt-0">
+                <button type="button" class="btn btn-light rounded-pill px-4" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" id="confirmDeleteBtn" class="btn btn-danger rounded-pill px-4 shadow-sm">
+                    <i class="fas fa-trash me-1"></i> Yes, Delete My Account
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <style>
     .btn-gold { background: #D4AF37; color: #000; }
     .btn-gold:hover { background: #b8952d; }
@@ -964,6 +1017,46 @@
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 <script>
     document.addEventListener('DOMContentLoaded', function () {
+        // Delete Account - Show/Hide Other Reason
+        const deleteReasonSelect = document.getElementById('deleteReasonSelect');
+        const otherReasonGroup = document.getElementById('otherReasonGroup');
+        if (deleteReasonSelect) {
+            deleteReasonSelect.addEventListener('change', function() {
+                otherReasonGroup.style.display = this.value === 'Other' ? 'block' : 'none';
+            });
+        }
+
+        // SweetAlert Flash Messages
+        var swalSuccess = document.getElementById('swal-success');
+        var swalError = document.getElementById('swal-error');
+        if (swalSuccess) {
+            Swal.fire({ icon: 'success', title: 'Success', text: swalSuccess.dataset.message, confirmButtonColor: '#900C3F' });
+        }
+        if (swalError) {
+            Swal.fire({ icon: 'error', title: 'Error', text: swalError.dataset.message, confirmButtonColor: '#900C3F' });
+        }
+
+        // Delete Account - SweetAlert Confirmation
+        var confirmDeleteBtn = document.getElementById('confirmDeleteBtn');
+        if (confirmDeleteBtn) {
+            confirmDeleteBtn.addEventListener('click', function() {
+                Swal.fire({
+                    title: 'Are you sure?',
+                    text: 'This action cannot be undone. Your account will be permanently deleted after admin approval.',
+                    icon: 'warning',
+                    showCancelButton: true,
+                    confirmButtonColor: '#900C3F',
+                    cancelButtonColor: '#6c757d',
+                    confirmButtonText: 'Yes, Delete My Account',
+                    cancelButtonText: 'Cancel'
+                }).then(function(result) {
+                    if (result.isConfirmed) {
+                        document.getElementById('deleteAccountForm').submit();
+                    }
+                });
+            });
+        }
+
         // Selfie Camera Logic for Dashboard
         const startCameraBtn = document.getElementById('dashStartCameraBtn');
         const placeholder = document.getElementById('dashCameraPlaceholder');

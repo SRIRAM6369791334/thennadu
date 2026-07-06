@@ -72,6 +72,9 @@
                 <a href="#" class="sidebar-link" data-bs-toggle="modal" data-bs-target="#editProfileModal">
                     <i class="fa-solid fa-user-edit"></i> <span>Edit Profile</span>
                 </a>
+                <a href="#" class="sidebar-link text-danger" data-bs-toggle="modal" data-bs-target="#deleteAccountModal">
+                    <i class="fa-solid fa-user-slash"></i> <span>Delete Account</span>
+                </a>
                 <hr class="mx-4 my-2 opacity-50">
                 <form action="{{ route('logout') }}" method="POST" class="mt-2">
                     @csrf

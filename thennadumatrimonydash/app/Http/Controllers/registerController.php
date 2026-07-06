@@ -1268,8 +1268,11 @@ class registerController extends Controller
     public function getdeleterecords()
     {
         $deleterecord = DB::table('registers')
-            ->select('*')
-            ->where('delete_setting', '!=', '')
+            ->select('registers.*')
+            ->leftJoin('images', 'images.varanid', '=', 'registers.varan_id')
+            ->where('registers.delete_setting', '!=', '')
+            ->groupBy('registers.id')
+            ->orderBy('registers.updated_at', 'desc')
             ->get();
 
         return view('pages.deleterecord', compact('deleterecord'));
@@ -1279,22 +1282,92 @@ class registerController extends Controller
     {
         $status = $request->status;
         $uid = $request->prid;
-        $statusresult = "";
-        date_default_timezone_set("Asia/Kolkata");
-        $datetime = date('Y-m-d h:i:s');
-        if ($status == 'Approve') {
-            $updatedata = DB::table('registers')->where('varan_id', $uid)->update(array(
-                'delete_setting' => $status,
-                'status' => 0,
-            ));
-        } else {
-            $updatedata = DB::table('registers')->where('varan_id', $uid)->update(array(
-                'delete_setting' => $status,
-                'status' => 1,
-            ));
-        }
 
-        return redirect('/deleterecord')->with('success', ' Status Updated');
+        DB::beginTransaction();
+
+        try {
+            $profile = DB::table('registers')->where('varan_id', $uid)->first();
+
+            if (!$profile) {
+                DB::rollBack();
+                return redirect('/deleterecord')->with('error', 'Profile not found.');
+            }
+
+            if ($status == 'Approve') {
+
+                $userId = DB::table('users')->where('user_ID', $uid)->value('id');
+
+                // Delete profile photos from filesystem
+                $images = DB::table('images')->where('varanid', $uid)->get();
+                foreach ($images as $img) {
+                    $path = public_path('uploads/' . $img->image_name);
+                    if (!empty($img->image_name) && file_exists($path)) {
+                        @unlink($path);
+                    }
+                }
+
+                // Delete horoscope files from filesystem
+                $horoscopes = DB::table('horoscopes')->where('varan_id', $uid)->get();
+                foreach ($horoscopes as $horo) {
+                    $path = public_path('uploads/' . $horo->img_name);
+                    if (!empty($horo->img_name) && file_exists($path)) {
+                        @unlink($path);
+                    }
+                }
+
+                // Delete related records from database tables
+                if ($userId) {
+                    DB::table('messages')->where('sender_id', $userId)->delete();
+                    DB::table('chat_settings')->where('user_id', $userId)->delete();
+                    DB::table('interest_requests')
+                        ->where('sender_id', $userId)
+                        ->orWhere('receiver_id', $userId)
+                        ->delete();
+                    DB::table('conversations')
+                        ->where('user_one', $userId)
+                        ->orWhere('user_two', $userId)
+                        ->delete();
+                    DB::table('user_details')->where('user_id', $userId)->delete();
+                    DB::table('addresses')->where('user_id', $userId)->delete();
+                    DB::table('family_details')->where('user_id', $userId)->delete();
+                    DB::table('horoscope_details')->where('user_id', $userId)->delete();
+                    DB::table('education_jobs')->where('user_id', $userId)->delete();
+                    DB::table('partner_preferences')->where('user_id', $userId)->delete();
+                    DB::table('users')->where('id', $userId)->delete();
+                }
+
+                DB::table('images')->where('varanid', $uid)->delete();
+                DB::table('horoscopes')->where('varan_id', $uid)->delete();
+                DB::table('partners')->where('varan_id', $uid)->delete();
+                DB::table('user_package')->where('user_varan_id', $uid)->delete();
+
+                // Update registers table
+                DB::table('registers')->where('varan_id', $uid)->update([
+                    'delete_setting' => 'Approve',
+                    'status'         => 0,
+                ]);
+
+            } else {
+                // Reject = Reactivate account
+                DB::table('registers')->where('varan_id', $uid)->update([
+                    'delete_setting' => '',
+                    'delete_reason'  => null,
+                    'status'         => 1,
+                ]);
+            }
+
+            DB::commit();
+
+            $msg = ($status == 'Approve')
+                ? 'Account deleted successfully. All data has been permanently removed.'
+                : 'Delete request rejected. Account reactivated.';
+
+            return redirect('/deleterecord')->with('success', $msg);
+
+        } catch (\Exception $e) {
+            DB::rollBack();
+            return redirect('/deleterecord')->with('error', 'Error: ' . $e->getMessage());
+        }
     }
 
     public function profilefilter($id)

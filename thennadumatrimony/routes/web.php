@@ -104,6 +104,7 @@ Route::post('/dashboard/photo-upload', [\App\Http\Controllers\DashboardControlle
 Route::post('/dashboard/selfie-upload', [\App\Http\Controllers\DashboardController::class, 'uploadSelfie'])->name('dashboard.selfie.upload')->middleware('auth');
 Route::post('/dashboard/photo-main/{id}', [\App\Http\Controllers\DashboardController::class, 'setMainPhoto'])->name('dashboard.photo.main')->middleware('auth');
 Route::post('/dashboard/photo-delete/{id}', [\App\Http\Controllers\DashboardController::class, 'deletePhoto'])->name('dashboard.photo.delete')->middleware('auth');
+Route::post('/dashboard/request-delete', [\App\Http\Controllers\DashboardController::class, 'requestDelete'])->name('dashboard.request.delete')->middleware('auth');
 
 // Interest System Routes
 Route::middleware('auth')->group(function () {

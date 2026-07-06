@@ -688,4 +688,40 @@ class DashboardController extends Controller
 
         return round(($filledFields / $totalFields) * 100);
     }
+
+    public function requestDelete(Request $request)
+    {
+        $user = Auth::user();
+        if (!$user) {
+            return redirect()->route('login');
+        }
+
+        $request->validate([
+            'delete_reason' => 'required|string|max:255',
+            'delete_reason_detail' => 'nullable|string|max:1000',
+        ]);
+
+        $reason = $request->delete_reason;
+        if ($request->delete_reason === 'Other' && !empty($request->delete_reason_detail)) {
+            $reason = 'Other - ' . $request->delete_reason_detail;
+        } elseif (!empty($request->delete_reason_detail)) {
+            $reason .= ' - ' . $request->delete_reason_detail;
+        }
+
+        $existingPending = DB::table('registers')
+            ->where('varan_id', $user->varan_id)
+            ->where('delete_setting', 'Pending')
+            ->first();
+
+        if ($existingPending) {
+            return back()->with('error', 'You already have a pending delete request. Please wait for admin approval.');
+        }
+
+        DB::table('registers')->where('varan_id', $user->varan_id)->update([
+            'delete_setting' => 'Pending',
+            'delete_reason'  => $reason,
+        ]);
+
+        return redirect()->route('dashboard')->with('success', 'Your account deletion request has been sent to admin for approval.');
+    }
 }
