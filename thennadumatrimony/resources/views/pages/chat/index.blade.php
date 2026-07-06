@@ -23,6 +23,9 @@
                             $otherUser = $conv->user_one == $user->id ? $conv->userTwo : $conv->userOne;
                             $isActive = isset($conversation) && $conversation->id == $conv->id;
                         @endphp
+                        @if(!$otherUser)
+                            @continue
+                        @endif
                         <a href="{{ route('chat.show', $conv->id) }}" class="conversation-item d-flex align-items-center p-3 text-decoration-none border-bottom {{ $isActive ? 'bg-primary-subtle active border-start border-4 border-primary' : '' }}">
                             <div class="avatar-wrapper position-relative me-3">
                                 <img src="{{ $otherUser->profileImage() }}" 

@@ -16,14 +16,18 @@ class ChatController extends Controller
         $sessionUser = Auth::user();
         if (!$sessionUser) return redirect()->route('login');
 
-        // Map to User model
         $user = User::where('email', $sessionUser->email ?? $sessionUser->email_id)->first();
         if (!$user) return redirect()->route('dashboard');
 
         $conversations = Conversation::where('user_one', $user->id)
             ->orWhere('user_two', $user->id)
             ->with(['userOne', 'userTwo', 'lastMessage'])
-            ->get();
+            ->get()
+            ->filter(function ($conv) {
+                // Skip conversations where the other user was deleted
+                $otherUser = $conv->user_one == Auth::id() ? $conv->userTwo : $conv->userOne;
+                return $otherUser !== null;
+            });
 
         return view('pages.chat.index', compact('conversations', 'user'));
     }
@@ -33,29 +37,27 @@ class ChatController extends Controller
         $sessionUser = Auth::user();
         if (!$sessionUser) return redirect()->route('login');
 
-        // Map the current session user to User model
         $currentUserModel = User::where('email', $sessionUser->email ?? $sessionUser->email_id)->first();
         if (!$currentUserModel) return back()->with('error', 'Your user account is not synchronized.');
         $currentUser = $currentUserModel->id;
 
-        // The targetUserId is already the User ID or we search by Profile ID
+        // Check if target user exists
         $targetUser = User::find($userId);
         if (!$targetUser) {
-            // Fallback: Check if it's a Profile ID
-            $targetProfile = \App\Models\Profile::find($userId);
-            if ($targetProfile) {
-                $targetUser = User::where('email', $targetProfile->email_id)->first();
-            }
+            return back()->with('error', 'This user no longer exists or has been deleted.');
         }
 
-        if (!$targetUser) return back()->with('error', 'Target user account not found.');
-        $targetUserId = $targetUser->id;
+        // Check if target user account is active
+        $targetProfile = \App\Models\Profile::where('id', $userId)->orWhere('varan_id', $targetUser->user_ID ?? '')->first();
+        if ($targetProfile && $targetProfile->status == 0) {
+            return back()->with('error', 'This user account has been deleted.');
+        }
 
-        // Step 2: Conversation Logic - Check interest status = accepted (mutual)
-        $interest = InterestRequest::where(function($query) use ($currentUser, $targetUserId) {
-            $query->where('sender_id', $currentUser)->where('receiver_id', $targetUserId);
-        })->orWhere(function($query) use ($currentUser, $targetUserId) {
-            $query->where('sender_id', $targetUserId)->where('receiver_id', $currentUser);
+        // Check interest status = accepted (mutual)
+        $interest = InterestRequest::where(function($query) use ($currentUser, $targetUser) {
+            $query->where('sender_id', $currentUser)->where('receiver_id', $targetUser->id);
+        })->orWhere(function($query) use ($currentUser, $targetUser) {
+            $query->where('sender_id', $targetUser->id)->where('receiver_id', $currentUser);
         })->where('status', 1)->first();
 
         if (!$interest) {
@@ -63,16 +65,16 @@ class ChatController extends Controller
         }
 
         // Check if conversation exists
-        $conversation = Conversation::where(function($query) use ($currentUser, $targetUserId) {
-            $query->where('user_one', $currentUser)->where('user_two', $targetUserId);
-        })->orWhere(function($query) use ($currentUser, $targetUserId) {
-            $query->where('user_one', $targetUserId)->where('user_two', $currentUser);
+        $conversation = Conversation::where(function($query) use ($currentUser, $targetUser) {
+            $query->where('user_one', $currentUser)->where('user_two', $targetUser->id);
+        })->orWhere(function($query) use ($currentUser, $targetUser) {
+            $query->where('user_one', $targetUser->id)->where('user_two', $currentUser);
         })->first();
 
         if (!$conversation) {
             $conversation = Conversation::create([
                 'user_one' => $currentUser,
-                'user_two' => $targetUserId
+                'user_two' => $targetUser->id
             ]);
         }
 
@@ -87,7 +89,17 @@ class ChatController extends Controller
         $user = User::where('email', $sessionUser->email ?? $sessionUser->email_id)->first();
         if (!$user) return redirect()->route('dashboard');
 
-        $conversation = Conversation::with(['userOne', 'userTwo'])->findOrFail($conversationId);
+        $conversation = Conversation::with(['userOne', 'userTwo'])->find($conversationId);
+
+        if (!$conversation) {
+            return redirect()->route('chat.index')->with('error', 'This conversation no longer exists.');
+        }
+
+        // Check if the other user was deleted
+        $otherUser = $conversation->user_one == $user->id ? $conversation->userTwo : $conversation->userOne;
+        if (!$otherUser) {
+            return redirect()->route('chat.index')->with('error', 'This user has been removed.');
+        }
 
         // Security: Validate conversation ownership
         if ($conversation->user_one !== $user->id && $conversation->user_two !== $user->id) {
@@ -97,7 +109,11 @@ class ChatController extends Controller
         $conversations = Conversation::where('user_one', $user->id)
             ->orWhere('user_two', $user->id)
             ->with(['userOne', 'userTwo', 'lastMessage'])
-            ->get();
+            ->get()
+            ->filter(function ($conv) {
+                $other = $conv->user_one == Auth::id() ? $conv->userTwo : $conv->userOne;
+                return $other !== null;
+            });
 
         $messages = Message::where('conversation_id', $conversationId)
             ->orderBy('created_at', 'asc')
@@ -122,14 +138,24 @@ class ChatController extends Controller
         $user = User::where('email', $sessionUser->email ?? $sessionUser->email_id)->first();
         if (!$user) return response()->json(['error' => 'Unauthorized'], 401);
 
-        $conversation = Conversation::findOrFail($request->conversation_id);
+        $conversation = Conversation::find($request->conversation_id);
+
+        if (!$conversation) {
+            return response()->json(['error' => 'Conversation not found.'], 404);
+        }
+
+        // Check if other user still exists
+        $otherUserId = $conversation->user_one == $user->id ? $conversation->user_two : $conversation->user_one;
+        $otherUser = User::find($otherUserId);
+        if (!$otherUser) {
+            return response()->json(['error' => 'This user has been removed.'], 404);
+        }
 
         if ($conversation->user_one !== $user->id && $conversation->user_two !== $user->id) {
             return response()->json(['error' => 'Unauthorized'], 403);
         }
 
-        // Step 6: Abuse filter (simple example)
-        $abusiveWords = ['spam', 'abuse', 'offensive']; // Placeholder
+        $abusiveWords = ['spam', 'abuse', 'offensive'];
         $filteredMessage = str_ireplace($abusiveWords, '***', $request->message);
         
         $message = Message::create([
@@ -139,7 +165,6 @@ class ChatController extends Controller
             'is_read' => false
         ]);
 
-        // Broadcast the event with a try/catch in case Reverb is down
         try {
             broadcast(new \App\Events\MessageSent($message, $conversation->id))->toOthers();
         } catch (\Exception $e) {
@@ -163,7 +188,11 @@ class ChatController extends Controller
         $user = User::where('email', $sessionUser->email ?? $sessionUser->email_id)->first();
         if (!$user) return response()->json(['error' => 'Unauthorized'], 401);
 
-        $conversation = Conversation::findOrFail($conversationId);
+        $conversation = Conversation::find($conversationId);
+
+        if (!$conversation) {
+            return response()->json(['error' => 'Conversation not found.'], 404);
+        }
 
         if ($conversation->user_one !== $user->id && $conversation->user_two !== $user->id) {
             return response()->json(['error' => 'Unauthorized'], 403);
