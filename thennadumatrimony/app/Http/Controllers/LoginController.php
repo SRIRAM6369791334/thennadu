@@ -54,14 +54,21 @@ class LoginController extends Controller
             // Check if account is blocked
             if ($user->blockstatus == 1) {
                 return back()->withErrors([
-                    'login_id' => 'உங்கள் கணக்கு தற்காலிகமாக முடக்கப்பட்டுள்ளது. மேலும் விவரங்களுக்கு எங்கள் வாடிக்கையாளர் சேவையைத் தொடர்பு கொள்ளவும். (Your account has been temporarily blocked. Please contact our customer support for further details.)',
+                    'login_id' => 'Your account has been temporarily blocked. Please contact our customer support for further details.',
                 ])->onlyInput('login_id');
             }
 
             // Check if account is rejected
             if ($user->status == 2) {
                 return back()->withErrors([
-                    'login_id' => 'உங்கள் கணக்கு நிராகரிக்கப்பட்டுள்ளது. மேலும் விவரங்களுக்கு எங்கள் வாடிக்கையாளர் சேவையைத் தொடர்பு கொள்ளவும். (Your account has been rejected. Please contact our customer support for further details.)',
+                    'login_id' => 'Your account has been rejected. Please contact our customer support for further details.',
+                ])->onlyInput('login_id');
+            }
+
+            // Check if account is deleted
+            if ($user->status == 0) {
+                return back()->withErrors([
+                    'login_id' => 'Your account has been deleted. Please contact our customer support for further details.',
                 ])->onlyInput('login_id');
             }
 

@@ -17,7 +17,15 @@ class CheckBlockedUser
     public function handle(Request $request, Closure $next)
     {
         if (Auth::check()) {
-            $user = Auth::user();
+            // Force fresh read from database to get latest status
+            $user = \App\Models\Profile::find(Auth::id());
+
+            if (!$user) {
+                Auth::logout();
+                $request->session()->invalidate();
+                $request->session()->regenerateToken();
+                return redirect('/register');
+            }
 
             if ($user->blockstatus == 1) {
                 Auth::logout();
@@ -26,7 +34,7 @@ class CheckBlockedUser
 
                 return redirect('/register')
                     ->withErrors([
-                        'login_id' => 'உங்கள் கணக்கு தற்காலிகமாக முடக்கப்பட்டுள்ளது. மேலும் விவரங்களுக்கு எங்கள் வாடிக்கையாளர் சேவையைத் தொடர்பு கொள்ளவும். (Your account has been temporarily blocked. Please contact our customer support.)',
+                        'login_id' => ' Your account has been temporarily blocked. Please contact our customer support.',
                     ])
                     ->withInput();
             }
@@ -38,7 +46,19 @@ class CheckBlockedUser
 
                 return redirect('/register')
                     ->withErrors([
-                        'login_id' => 'உங்கள் கணக்கு நிராகரிக்கப்பட்டுள்ளது. மேலும் விவரங்களுக்கு எங்கள் வாடிக்கையாளர் சேவையைத் தொடர்பு கொள்ளவும். (Your account has been rejected. Please contact our customer support.)',
+                        'login_id' => 'Your account has been rejected. Please contact our customer support.',
+                    ])
+                    ->withInput();
+            }
+
+            if ($user->status == 0) {
+                Auth::logout();
+                $request->session()->invalidate();
+                $request->session()->regenerateToken();
+
+                return redirect('/register')
+                    ->withErrors([
+                        'login_id' => 'Your account has been deleted. Please contact our customer support.',
                     ])
                     ->withInput();
             }
